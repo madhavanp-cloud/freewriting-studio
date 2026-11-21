@@ -1,0 +1,10 @@
+# Freewriting Studio on Netlify. The files are served as they are; there is no build step.
+[build]
+  publish = "."
+
+# Always check for a newer version, so an update shows up the next time the app opens.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache"
+    X-Robots-Tag = "noindex"

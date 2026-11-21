@@ -140,6 +140,7 @@ window.FS_TECHNIQUES = [
     id: 'reenter', module: 4, n: 11, name: 'Rewrite to Enter the Same Space',
     summary: 'Read an old piece of yours, set it aside, then freewrite back into its mood without repeating it.',
     how: ['Read the old piece once.', 'Put it away.', 'Freewrite into its mood: the feeling, the weather, the tension. Not its plot or sentences.'],
+    source: true,
     seedLabel: 'Which old piece',
     goal: { mode: 'time', minutes: 10, words: 500, endOn: 'first' },
     timing: { book: false, text: '10 minutes, suggested' }
@@ -148,7 +149,7 @@ window.FS_TECHNIQUES = [
     id: 'someone', module: 4, n: 12, name: 'Write Into Someone Else\'s Space',
     summary: 'Take a piece you admire and freewrite into its world: continuation, remix or reply.',
     how: ['Read a page by a writer you admire, once.', 'Close the book.', 'Freewrite into that world as a peer: carry it on, remix it, or answer it.'],
-    later: 'In stage 3 you can paste the passage in; it shows once and then closes when the timer starts.',
+    source: true,
     seedLabel: 'The passage or writer',
     goal: { mode: 'time', minutes: 10, words: 500, endOn: 'first' },
     timing: { book: false, text: '10 minutes, suggested' }
@@ -197,7 +198,11 @@ window.FS_TECHNIQUES = [
     id: 'sift', module: 4, n: 18, name: 'Sift a Question From Multiple Perspectives',
     summary: 'Write about a problem to yourself, then to your reader, then to a sceptical reader.',
     how: ['Write about the problem addressed to yourself.', 'Write it again addressed to your reader.', 'Write it a third time to a sceptic who doesn\'t buy it.'],
-    later: 'In stage 3 this gets three tabs, one for each reader.',
+    phases: [
+      { name: 'To yourself', minutes: 5, kind: 'write', hint: 'Write about the problem for your own eyes. No explaining.' },
+      { name: 'To your reader', minutes: 5, kind: 'write', pin: 0, hint: 'Now write it for your reader. What do they need that you skipped?' },
+      { name: 'To a sceptic', minutes: 5, kind: 'write', pin: 1, hint: 'Write it for a reader who doesn\'t buy it. Answer their objections.' }
+    ],
     seedLabel: 'The problem',
     goal: { mode: 'time', minutes: 15, words: 700, endOn: 'first' },
     timing: { book: false, text: '15 minutes (5 for each reader), suggested' }
@@ -208,6 +213,7 @@ window.FS_TECHNIQUES = [
     id: 'phrase', module: 5, n: 19, name: 'Turning a Phrase',
     summary: 'Take one simple sentence and rewrite it many ways, noticing how each shifts the meaning.',
     how: ['Put one plain sentence at the top.', 'Rewrite it again and again, one version a line.', 'Notice what each version changes.'],
+    lines: true,
     seedLabel: 'Your sentence',
     goal: { mode: 'time', minutes: 5, words: 250, endOn: 'first' },
     timing: { book: false, text: '5 minutes, suggested' }
@@ -281,3 +287,62 @@ window.FS_TECHNIQUES = [
     timing: { book: true, text: '5 / 10 / 5 / 10 minutes (book)' }
   }
 ];
+
+// Used only inside a Column project: the One-Hour recipe from the freewrite on, since the project already has a sketch.
+window.FS_TECHNIQUES.push({
+  id: 'columndraft', module: 0, n: 0, hidden: true, name: 'Column draft',
+  summary: 'Draft against the sketch, reread and mark, fill gaps and reorder, polish.',
+  phases: [
+    { name: 'Draft', minutes: 25, kind: 'write', hint: 'Write the column section by section, without stopping. The sketch and anchors stay beside you.' },
+    { name: 'Reread and mark', minutes: 5, kind: 'mark', markFrom: [0], hint: 'Don\'t edit yet. Flag the strong lines and the dead weight.' },
+    { name: 'Fill gaps, reorder, cut', minutes: 20, kind: 'edit', from: 0, dropDead: 1, keep: 1, hint: 'Bring the critical mind in now. Move the strong material into the order that serves the piece, insert the facts, cut what\'s weak.' },
+    { name: 'Polish', minutes: 10, kind: 'edit', from: 2, hint: 'Line level only. The opening line earns the piece, the closing line lands, cut flab.' }
+  ],
+  seedLabel: 'Working title',
+  timing: { book: true, text: '25 / 5 / 20 / 5 to 10 minutes (book)' }
+});
+
+// Projects: a set of techniques run in order, each step able to see what earlier steps produced.
+window.FS_PIPELINES = {
+  column: {
+    name: 'Column',
+    blurb: 'An opinion column built on a contrarian or provocative take, from your column process note. About two hours end to end.',
+    skip: 'Left out for column length: Bird\'s Eye Mode, Trees From Tens and the Writing Relay.',
+    steps: [
+      { key: 'angle', name: 'Start with the vague angle', tech: 'free', minutes: 10, seedLabel: 'Your angle',
+        hint: 'Write the cynical or contrarian impulse as it actually occurs to you. Two half-formed claims stitched together is a normal start.' },
+      { key: 'sharpen', name: 'Sharpen it with Life Calling', tech: 'lifecalling', minutes: 20, show: ['angle'], seed: 'Why does this feel true? What convinced me?',
+        hint: 'Hunt for the one specific example or moment that actually convinced you. Restate the question whenever you stall.' },
+      { key: 'feel', name: 'Feel the emotion under it', tech: 'feelgoals', minutes: 15, show: ['angle'], seed: 'What do I actually feel about this?',
+        hint: 'Resignation, contempt, whatever it really is. It usually surfaces the real evidence. Stop early if it goes flat.' },
+      { key: 'steelman', name: 'Steelman the opposition (Hot Seat)', tech: 'hotseat', show: ['angle'], questions: [0, 1, 2, 3],
+        hint: 'One minute a question, no editing.' },
+      { key: 'angleqs', name: 'Hot Seat on the angle itself', tech: 'hotseat', show: ['angle'], questions: [4, 5, 6],
+        hint: 'One minute a question, no editing.' },
+      { key: 'clarify', name: 'If the angle is still too vague: 30-Minute Idea Clarification', tech: 'clarify', show: ['angle'], optional: true,
+        hint: 'Only if the Hot Seat had nothing to bite on. Keep the summary, not the freewriting.' },
+      { key: 'anchors', name: 'Get two or three real anchors', kind: 'anchors',
+        hint: 'A specific fact, date, announcement or quote. Checkable, not remembered secondhand. The one step that isn\'t freewriting.' },
+      { key: 'outline', name: 'Outline Sketch with the anchors placed', tech: 'outline', show: ['anchors', 'angleqs'],
+        hint: 'Beats in order: hook, claim, evidence, counter-case answered, close. Put each anchor into the beat it supports.' },
+      { key: 'draft', name: 'Draft, reread, fill gaps, polish', tech: 'columndraft', show: ['outline', 'anchors'],
+        hint: 'The One-Hour recipe from the freewrite on.' }
+    ]
+  },
+  fiction: {
+    name: 'Fiction scene',
+    blurb: 'A scene from a seed to a revised draft: the route the merchant and the monk took.',
+    steps: [
+      { key: 'seed', name: 'Find the seed', tech: 'seed', minutes: 10, seedLabel: 'Your seed: an image, a line or a question',
+        hint: 'Freewrite outward from one small thing. Come back to it when you lose the thread.' },
+      { key: 'birdseye', name: 'Map it from above', tech: 'birdseye', show: ['seed'],
+        hint: 'Who wants what, how the parts sit together. No scenes yet.' },
+      { key: 'outline', name: 'Outline Sketch the scene', tech: 'outline', show: ['birdseye'],
+        hint: 'The beats of this one scene, in order.' },
+      { key: 'draft', name: 'Draft the scene', tech: 'free', minutes: 25, show: ['outline'], seedLabel: 'The scene',
+        hint: 'Write the scene against the sketch, without stopping.' },
+      { key: 'revise', name: 'Revise by writing into a writer you admire', tech: 'someone', show: ['draft'],
+        hint: 'Read a page by a writer who does what your draft doesn\'t yet, then freewrite the scene again in that register.' }
+    ]
+  }
+};

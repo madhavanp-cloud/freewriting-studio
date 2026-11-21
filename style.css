@@ -228,3 +228,18 @@ textarea.writing.hs { min-height: 34vh; }
 .pass .seed-label, .passlabel { margin: 0; }
 .passlabel { margin-top: 22px; }
 mark.gap { background: var(--tint); color: var(--accent); border-radius: 4px; padding: 0 3px; font-weight: 600; }
+
+/* ---------- stage 3: projects, anchors ---------- */
+
+input.name { font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-size: 26px; font-weight: 700;
+  border-color: transparent; background: transparent; padding: 4px 0; margin: 2px 0 6px; }
+input.name:hover { border-color: var(--line); }
+input.name:focus { background: var(--card); padding: 4px 10px; }
+.num.done { background: var(--green); border-color: var(--green); color: var(--bg); }
+.step-next .row { background: var(--tint); }
+.step-next .num { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.anchor { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 6px; margin-top: 12px; }
+.anchor textarea, .anchor input[type=text] { margin-top: 6px; background: var(--bg); }
+.anchor-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.anchor-foot .tick { border: 0; background: none; padding: 6px 0; }
+.list + .hint { margin-top: 12px; }

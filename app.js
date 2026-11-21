@@ -16,6 +16,7 @@
       sessions: [],   // freewrites, one per sitting
       morning: [],    // one per day: { id, date, text, goal, secondsTaken, reached }
       prompts: {},    // "2026-11-22": prompt written the day before
+      projects: [],   // { id, name, pipeline, steps: { stepKey: sessionId }, anchors: [] }
       settings: { agreement: true, chime: true, lastGoal: {} },
       meta: { firstUse: Date.now(), lastExport: null, snooze: 0, tipDismissed: false }
     };
@@ -335,6 +336,10 @@
       else { clock.textContent = clockText(g.minutes * 60 - s); clockLabel.textContent = 'left of ' + plural(g.minutes, 'minute'); }
       wordsEl.textContent = n.toLocaleString('en-IN');
       wordsLabel.textContent = wMode && !rec.reached ? 'of ' + g.words.toLocaleString('en-IN') + ' words' : (n === 1 ? 'word' : 'words');
+      if (opts.countLines) {
+        var v = (rec.text || '').split('\n').filter(function (l) { return l.trim(); }).length;
+        wordsLabel.textContent += ' · ' + plural(v, 'version');
+      }
       timeBar.parentNode.hidden = !tMode || rec.reached;
       wordBar.parentNode.hidden = !wMode || rec.reached;
       timeBar.style.width = Math.min(100, s / (g.minutes * 60) * 100) + '%';
@@ -374,6 +379,7 @@
         started = true; rec.startedAt = Date.now();
         db.settings.lastGoal[opts.techId] = copyGoal(g);
         picker.hidden = true; drawSeed();
+        if (opts.onStart) opts.onStart();
       }
       running = true; lastTick = Date.now();
       interval = setInterval(tick, 250);
@@ -455,20 +461,26 @@
   function techNum(t) { return t.num || (t.n ? String(t.n) : ''); }
   function inModule(n) { return TECHS.filter(function (t) { return t.module === n; }); }
 
-  function newSession(techId) {
+  // step (optional): a project step, which can set the seed, the minutes and ready-made Hot Seat questions.
+  function newSession(techId, project, step) {
     var t = TECH[techId] || TECH.free;
-    var s = { id: uid(), technique: t.id, seed: t.seed || '', restates: [], created: Date.now(), updated: Date.now() };
+    var s = { id: uid(), technique: t.id, seed: (step && step.seed) || t.seed || '', restates: [], created: Date.now(), updated: Date.now() };
+    if (project) { s.projectId = project.id; s.stepKey = step.key; }
     if (t.phases) {
       s.phases = t.phases.map(function (p, k) { return { name: p.name, kind: p.kind, goal: phaseGoal(t, k), text: '', secondsTaken: 0, reached: false }; });
       s.phaseIndex = 0;
     } else if (t.id === 'hotseat') {
       s.questions = []; s.hs = { minutes: (db.settings.lastGoal.hotseat || t.goal).minutes, index: 0, state: 'setup' };
+      if (step && step.questions) step.questions.forEach(function (n) { s.questions.push({ q: t.sets[0].questions[n], a: '', seconds: 0 }); });
     } else if (t.id === 'gradual') {
       s.passes = [newPass()];
     } else {
       s.goal = defaultGoal(t.id); s.text = ''; s.secondsTaken = 0; s.reached = false;
+      if (step && step.minutes && !db.settings.lastGoal[t.id]) { s.goal.mode = 'time'; s.goal.minutes = step.minutes; }
     }
-    db.sessions.push(s); persist();
+    db.sessions.push(s);
+    if (project) { project.steps[step.key] = s.id; project.updated = Date.now(); }
+    persist();
     go('s/' + s.id);
   }
 
@@ -538,6 +550,7 @@
       notes,
       h('ul', { class: 'list gap' },
         rowLink('morning', 'Morning Freewrite', morningLine(today)),
+        rowLink('projects', 'Projects', 'A column or a fiction scene, step by step', db.projects.length || null),
         rowLink('saved', 'Saved freewrites', null, db.sessions.filter(function (s) { return !isEmpty(s); }).length)),
       h('h2', null, 'Techniques'),
       h('ul', { class: 'list' }, MODULES.map(function (m) {
@@ -605,25 +618,46 @@
     if (s.questions) return hotSeatScreen(s, t);
     if (s.passes) return gradualScreen(s, t);
     var status = h('p', { class: 'status' }, 'Saves by itself as you type');
+    var step = stepOf(s);
+    // Write Into / Rewrite Into: the passage shows until the timer starts, then closes until the goal is reached.
+    var sourceWrap = h('div');
+    function drawSource(phase) {
+      sourceWrap.textContent = '';
+      if (!t.source) return;
+      if (phase === 'before') {
+        var ta = h('textarea', { class: 'small', value: s.source || '', placeholder: 'Paste the passage here (optional). Read it once. It closes when you start.', 'aria-label': 'The passage' });
+        ta.addEventListener('input', function () { s.source = ta.value; grow(ta); s.updated = Date.now(); save(); });
+        add(sourceWrap, [h('p', { class: 'field-label' }, 'The passage'), ta]);
+      } else if (phase === 'after' && (s.source || '').trim()) {
+        sourceWrap.appendChild(h('details', { class: 'earlier-phase chrome' }, h('summary', null, 'The passage'), textBlock(s.source)));
+      } else if (phase === 'during' && (s.source || '').trim()) {
+        sourceWrap.appendChild(h('p', { class: 'hint chrome' }, 'The passage is closed until you reach the goal.'));
+      }
+    }
+    var startedAlready = !!s.startedAt || s.secondsTaken > 0;
+    drawSource(!startedAlready ? 'before' : s.reached ? 'after' : 'during');
     var w = writer(s, {
-      techId: t.id, seedLabel: t.seedLabel || 'Seed (optional)', seedHint: t.seedHint,
+      techId: t.id, seedLabel: (step && step.seedLabel) || t.seedLabel || 'Seed (optional)', seedHint: t.seedHint,
+      countLines: !!t.lines,
+      onStart: function () { drawSource('during'); },
+      onReached: function () { drawSource('after'); },
       touch: function () { s.updated = Date.now(); save(); },
       leave: function () {
         if (isEmpty(s) && db.sessions.indexOf(s) >= 0) { db.sessions.splice(db.sessions.indexOf(s), 1); }
         persist();
       }
     });
-    var back = t.id === 'free' ? backLink('', 'Home') : backLink('t/' + t.id, t.name);
-    show(h('div', { class: 'chrome' }, back,
-        h('p', { class: 'eyebrow' }, (t.module ? 'Exercise ' + techNum(t) + ' · ' : '') + dateText(s.created)),
-        h('h1', { class: 'h1small' }, t.name)),
-      w.el, status,
+    show(h('div', { class: 'chrome' }, backFor(s, t),
+        h('p', { class: 'eyebrow' }, step ? projectOf(s).name + ' · ' + t.name : (t.module ? 'Exercise ' + techNum(t) + ' · ' : '') + dateText(s.created)),
+        h('h1', { class: 'h1small' }, step ? step.name : t.name),
+        step && step.hint ? h('p', { class: 'sub hintline' }, step.hint) : null),
+      projectAside(s), sourceWrap, w.el, status,
       h('div', { class: 'chrome foot' },
         h('button', { class: 'btn', onclick: function () { copyText(s.text); } }, 'Copy the text'),
         h('button', { class: 'btn', onclick: function () { exportOne(s); } }, 'Export as a text file'),
         h('p', { style: 'text-align:center' }, h('button', { class: 'link danger', onclick: function () {
           confirmBox('Delete this freewrite?', 'It will be removed from this device.', 'Delete it', function () {
-            db.sessions = db.sessions.filter(function (x) { return x.id !== s.id; }); persist(); go(t.id === 'free' ? '' : 't/' + t.id);
+            db.sessions = db.sessions.filter(function (x) { return x.id !== s.id; }); persist(); go(backHash(s, t));
           }, true);
         } }, 'Delete this freewrite'))));
     statusEl = status;
@@ -636,7 +670,7 @@
       h('p', { style: 'text-align:center' }, h('button', { class: 'link danger', onclick: function () {
         confirmBox('Delete this ' + (s.questions ? 'Hot Seat' : s.passes ? 'sketch' : 'freewrite') + '?', 'It will be removed from this device.', 'Delete it', function () {
           if (stopWriter) { var stop = stopWriter; stopWriter = null; stop(); }
-          removeSession(s); persist(); go('t/' + t.id);
+          removeSession(s); persist(); go(backHash(s, t));
         }, true);
       } }, 'Delete')));
   }
@@ -698,6 +732,7 @@
         strong.length ? h('ul', { class: 'keep' }, strong.map(function (x) { return h('li', null, x); }))
           : h('p', { class: 'soft' }, 'Nothing was marked strong.')));
     }
+    if (p.kind !== 'mark') parts = parts.concat(projectParts(s));
     return parts.length ? h('aside', { class: 'pinned' }, parts) : null;
   }
   function earlierPhases(s, t, upTo, skipPinned) {
@@ -808,12 +843,12 @@
         leave: function () { if (!(s.phaseIndex || 0) && isEmpty(s)) removeSession(s); persist(); }
       }).el;
     }
-    var pinned = p.pin != null || p.keep != null;
+    var pinned = !!pinnedPanel(s, t, i);
     var status = h('p', { class: 'status' }, 'Saves by itself');
     var stepper = h('ol', { class: 'stepper' }, t.phases.map(function (q, k) {
       return h('li', { class: k < i ? 'past' : k === i ? 'now' : null }, h('b', null, k + 1), h('span', null, q.name), h('span', { class: 'mins' }, q.minutes + 'm'));
     }));
-    show(h('div', { class: 'chrome' }, backLink('t/' + t.id, t.name),
+    show(h('div', { class: 'chrome' }, backFor(s, t),
         h('p', { class: 'eyebrow' }, t.name + ' · phase ' + (i + 1) + ' of ' + t.phases.length),
         h('h1', { class: 'h1small' }, p.name), stepper, p.hint ? h('p', { class: 'sub hintline' }, p.hint) : null),
       pinned ? h('div', { class: 'split' }, pinWrap, h('div', { class: 'splitmain' }, main)) : main,
@@ -829,7 +864,7 @@
     var box = h('textarea', { class: 'writing final', value: lastPh.text || '', 'aria-label': t.result ? 'Your summary' : 'The finished piece' });
     box.addEventListener('input', function () { lastPh.text = box.value; s.updated = Date.now(); grow(box); save(); });
     var status = h('p', { class: 'status' }, 'Saved on this device');
-    show(h('div', { class: 'chrome' }, backLink('t/' + t.id, t.name),
+    show(h('div', { class: 'chrome' }, backFor(s, t),
         h('p', { class: 'eyebrow' }, 'Finished · ' + dateText(s.created) + ' · ' + minsText(totalSeconds(s))),
         h('h1', { class: 'h1small' }, firstLine(s.seed, 60) || t.name),
         h('p', { class: 'sub' }, t.result || 'The finished piece. You can still edit it here.')),
@@ -844,7 +879,7 @@
   function hotSeatScreen(s, t) {
     if (!s.hs) s.hs = { minutes: 1, index: 0, state: 'setup' };
     var touch = function () { s.updated = Date.now(); save(); };
-    var head = h('div', { class: 'chrome' }, backLink('t/' + t.id, t.name),
+    var head = h('div', { class: 'chrome' }, backFor(s, t),
       h('p', { class: 'eyebrow' }, 'Hot Seat · ' + dateText(s.created)));
     if (s.hs.state === 'setup') return hotSeatSetup(s, t, head, touch);
     if (s.hs.state === 'done' || s.hs.index >= s.questions.length) { s.hs.state = 'done'; return hotSeatDone(s, t, head); }
@@ -882,7 +917,7 @@
     topic.addEventListener('input', function () { s.seed = topic.value; touch(); });
     drawList();
     stopWriter = function () { stopWriter = null; if (isEmpty(s) && !(s.seed || '').trim()) removeSession(s); persist(); };
-    show(head, h('h1', null, 'Write your questions'),
+    show(head, projectAside(s), h('h1', null, 'Write your questions'),
       h('p', { class: 'sub' }, 'Prepare them before any timer. Then each one gets its own countdown and moves on by itself.'),
       h('p', { class: 'field-label' }, 'Topic (optional)'), topic,
       h('p', { class: 'field-label' }, 'Questions'), list,
@@ -954,7 +989,7 @@
     load();
     stopWriter = function () { if (running) { tick(); running = false; clearInterval(interval); } keepAwake(false); stopWriter = null; persist(); };
     var status = h('p', { class: 'status' }, 'Saves by itself');
-    show(head, counter, qEl, dash, box, status, sessionFoot(s, t));
+    show(head, projectAside(s), counter, qEl, dash, box, status, sessionFoot(s, t));
     statusEl = status;
   }
 
@@ -1007,7 +1042,7 @@
       } }, 'Add pass ' + (s.passes.length + 1)));
     }
     var status = h('p', { class: 'status' }, 'Saves by itself');
-    show(h('div', { class: 'chrome' }, backLink('t/' + t.id, t.name),
+    show(h('div', { class: 'chrome' }, backFor(s, t),
         h('p', { class: 'eyebrow' }, 'Gradual Sketch · started ' + dateText(s.created)),
         h('h1', { class: 'h1small' }, firstLine(s.seed, 60) || t.name),
         h('p', { class: 'sub' }, plural(s.passes.length, 'pass', 'passes') + (gaps ? ' · ' + plural(gaps, 'gap') + ' marked in [brackets]' : ''))),
@@ -1017,6 +1052,195 @@
       active ? h('p', { class: 'seed-label passlabel chrome' }, 'Pass ' + s.passes.length + ' · today') : null,
       body, status, sessionFoot(s, t));
     statusEl = status;
+  }
+
+  /* ---------- Projects ---------- */
+
+  var PIPES = window.FS_PIPELINES;
+  var COLUMN_STUDIO = 'https://shiny-platypus-5bd643.netlify.app/';
+  function projectById(id) { return db.projects.filter(function (p) { return p.id === id; })[0]; }
+  function projectOf(s) { var p = s && s.projectId ? projectById(s.projectId) : null; return p && PIPES[p.pipeline] ? p : null; }
+  function stepOf(s) {
+    var p = projectOf(s);
+    return p ? PIPES[p.pipeline].steps.filter(function (st) { return st.key === s.stepKey; })[0] || null : null;
+  }
+  function backHash(s, t) { var p = projectOf(s); return p ? 'p/' + p.id : t.id === 'free' ? '' : 't/' + t.id; }
+  function backFor(s, t) {
+    var p = projectOf(s);
+    return p ? backLink('p/' + p.id, p.name) : t.id === 'free' ? backLink('', 'Home') : backLink('t/' + t.id, t.name);
+  }
+  function stepSession(p, key) { var id = p.steps[key]; return id ? db.sessions.filter(function (x) { return x.id === id; })[0] : null; }
+  function anchorsText(p) {
+    return (p.anchors || []).filter(function (a) { return (a.text || '').trim(); }).map(function (a) {
+      return '• ' + a.text.trim() + ((a.source || '').trim() ? ' (' + a.source.trim() + ')' : '') + (a.checked ? '' : ' [not checked yet]');
+    }).join('\n');
+  }
+  function stepOutput(p, key) {
+    if (key === 'anchors') return anchorsText(p);
+    var s = stepSession(p, key);
+    if (!s) return '';
+    if (s.questions) return s.questions.filter(function (q) { return (q.a || '').trim(); }).map(function (q) { return q.q.trim() + '\n' + q.a.trim(); }).join('\n\n');
+    // A sketch and its fill-in are both worth seeing later; a recipe hands on only its result.
+    if (s.phases && s.phases.every(function (ph) { return ph.kind === 'write'; })) {
+      return s.phases.filter(function (ph) { return (ph.text || '').trim(); }).map(function (ph) { return ph.name.toUpperCase() + '\n' + ph.text.trim(); }).join('\n\n');
+    }
+    return mainText(s);
+  }
+  // What earlier steps produced, shown beside a step that asks for it.
+  function projectParts(s) {
+    var step = stepOf(s), p = projectOf(s);
+    if (!step || !step.show) return [];
+    var steps = PIPES[p.pipeline].steps;
+    return step.show.map(function (key) {
+      var st = steps.filter(function (x) { return x.key === key; })[0], text = stepOutput(p, key);
+      if (!st || !text.trim()) return null;
+      return h('div', { class: 'pin' }, h('span', { class: 'seed-label' }, st.name), textBlock(text));
+    }).filter(Boolean);
+  }
+  function projectAside(s) { var parts = projectParts(s); return parts.length ? h('aside', { class: 'pinned' }, parts) : null; }
+  function stepState(p, st) {
+    if (st.kind === 'anchors') {
+      var filled = (p.anchors || []).filter(function (a) { return (a.text || '').trim(); });
+      return filled.filter(function (a) { return a.checked; }).length >= 2 ? 'done' : filled.length ? 'going' : 'todo';
+    }
+    var s = stepSession(p, st.key);
+    return !s ? 'todo' : finished(s) ? 'done' : 'going';
+  }
+  function stepMinutes(st) {
+    if (st.kind === 'anchors') return 'no timer';
+    var t = TECH[st.tech];
+    if (st.minutes) return st.minutes + ' min';
+    if (t.phases) return t.phases.reduce(function (a, q) { return a + q.minutes; }, 0) + ' min';
+    if (st.questions) return st.questions.length + ' × 1 min';
+    return goalText(defaultGoal(t.id));
+  }
+  function openStep(p, st) {
+    if (st.kind === 'anchors') return go('p/' + p.id + '/anchors');
+    var s = stepSession(p, st.key);
+    if (s) return go('s/' + s.id);
+    newSession(st.tech, p, st);
+  }
+
+  function projectsScreen() {
+    var list = sorted(db.projects.filter(function (p) { return PIPES[p.pipeline]; }));
+    show(backLink('', 'Home'), h('h1', null, 'Projects'),
+      h('p', { class: 'sub' }, 'A project runs several techniques in order. Each step can see what the earlier ones produced.'),
+      Object.keys(PIPES).map(function (k) {
+        return h('button', { class: 'btn' + (k === 'column' ? ' primary' : ''), onclick: function () { newProject(k); } },
+          'New ' + PIPES[k].name.toLowerCase() + ' project');
+      }),
+      list.length ? [h('h2', null, 'Your projects'), h('ul', { class: 'list' }, list.map(function (p) {
+        var steps = PIPES[p.pipeline].steps.filter(function (st) { return !st.optional; });
+        var done = steps.filter(function (st) { return stepState(p, st) === 'done'; }).length;
+        return rowLink('p/' + p.id, p.name, PIPES[p.pipeline].name + ' · ' + done + ' of ' + steps.length + ' steps done · ' + dateText(p.created));
+      }))] : null);
+  }
+  function newProject(kind) {
+    var inp = h('input', { type: 'text', placeholder: 'Working title', 'aria-label': 'Project name' });
+    modal('New ' + PIPES[kind].name.toLowerCase() + ' project', h('div', null, h('p', { class: 'sub' }, PIPES[kind].blurb), inp), [
+      { label: 'Create', primary: true, run: function () {
+        var p = { id: uid(), name: inp.value.trim() || 'Untitled', pipeline: kind, steps: {}, anchors: [], created: Date.now(), updated: Date.now() };
+        db.projects.push(p); persist(); go('p/' + p.id);
+      } },
+      { label: 'Cancel' }
+    ]);
+    setTimeout(function () { inp.focus(); }, 50);
+  }
+
+  function projectScreen(id) {
+    var p = projectById(id);
+    if (!p || !PIPES[p.pipeline]) return projectsScreen();
+    var pipe = PIPES[p.pipeline];
+    var name = h('input', { type: 'text', class: 'name', value: p.name, 'aria-label': 'Project name' });
+    name.addEventListener('input', function () { p.name = name.value; p.updated = Date.now(); save(); });
+    var next = pipe.steps.filter(function (st) { return !st.optional && stepState(p, st) !== 'done'; })[0];
+    var n = 0;
+    var rows = pipe.steps.map(function (st) {
+      var state = stepState(p, st), s = st.kind === 'anchors' ? null : stepSession(p, st.key);
+      var detail = [state === 'done' ? 'Done' : state === 'going' ? 'In progress' : st.optional ? 'Optional' : 'Not started', stepMinutes(st)];
+      if (s && countWords(mainText(s))) detail.push(plural(countWords(mainText(s)), 'word'));
+      if (st.kind === 'anchors' && p.anchors.length) detail.push(p.anchors.filter(function (a) { return a.checked && (a.text || '').trim(); }).length + ' checked');
+      var label = st.optional ? '?' : String(++n);
+      return h('li', { class: st === next ? 'step-next' : null }, h('a', { class: 'row', href: '#', onclick: function (e) { e.preventDefault(); openStep(p, st); } },
+        h('span', { class: 'num' + (state === 'done' ? ' done' : '') }, state === 'done' ? '✓' : label),
+        h('span', { class: 'grow' }, h('span', { class: 't' }, st.name), h('span', { class: 'd' }, detail.join(' · '))),
+        h('span', { class: 'chev' }, '›')));
+    });
+    show(backLink('projects', 'Projects'),
+      h('p', { class: 'eyebrow' }, pipe.name + ' project · ' + dateText(p.created)), name,
+      h('p', { class: 'sub' }, pipe.blurb),
+      next ? h('button', { class: 'btn primary', onclick: function () { openStep(p, next); } }, (stepState(p, next) === 'going' ? 'Continue: ' : 'Next: ') + next.name)
+        : h('div', { class: 'note' }, 'Every step is done.'),
+      h('ul', { class: 'list gap' }, rows),
+      pipe.skip ? h('p', { class: 'hint' }, pipe.skip) : null,
+      handoff(p),
+      h('div', { class: 'foot' }, h('p', { style: 'text-align:center' }, h('button', { class: 'link danger', onclick: function () {
+        confirmBox('Delete this project?', 'The project list goes. Its freewrites stay, under Saved freewrites.', 'Delete the project', function () {
+          db.sessions.forEach(function (s) { if (s.projectId === p.id) { delete s.projectId; delete s.stepKey; } });
+          db.projects = db.projects.filter(function (x) { return x !== p; }); persist(); go('projects');
+        }, true);
+      } }, 'Delete this project'))));
+  }
+
+  function blankAnchor() { return { id: uid(), text: '', source: '', checked: false }; }
+  function anchorsScreen(id) {
+    var p = projectById(id);
+    if (!p || !PIPES[p.pipeline]) return projectsScreen();
+    var st = PIPES[p.pipeline].steps.filter(function (x) { return x.kind === 'anchors'; })[0];
+    if (!p.anchors.length) p.anchors.push(blankAnchor(), blankAnchor());
+    var list = h('div'), countEl = h('p', { class: 'markcount' });
+    function count() {
+      var c = p.anchors.filter(function (a) { return a.checked && (a.text || '').trim(); }).length;
+      countEl.textContent = c >= 2 ? plural(c, 'anchor') + ' checked. Enough to build on.' : plural(c, 'anchor') + ' checked so far. You want two or three.';
+    }
+    function touch() { p.updated = Date.now(); save(); count(); }
+    function draw() {
+      list.textContent = '';
+      p.anchors.forEach(function (a, k) {
+        var text = h('textarea', { class: 'small', value: a.text, placeholder: 'The fact, date, announcement or quote', 'aria-label': 'Anchor ' + (k + 1) });
+        text.addEventListener('input', function () { a.text = text.value; grow(text); touch(); });
+        var src = h('input', { type: 'text', value: a.source || '', placeholder: 'Where you checked it: a link or a source', 'aria-label': 'Source for anchor ' + (k + 1) });
+        src.addEventListener('input', function () { a.source = src.value; touch(); });
+        var c = h('input', { type: 'checkbox', checked: a.checked });
+        c.addEventListener('change', function () { a.checked = c.checked; touch(); });
+        list.appendChild(h('div', { class: 'anchor' }, h('p', { class: 'seed-label' }, 'Anchor ' + (k + 1)), text, src,
+          h('div', { class: 'anchor-foot' }, h('label', { class: 'tick' }, c, h('span', null, 'Checked against the source')),
+            h('button', { class: 'link danger', onclick: function () { p.anchors.splice(k, 1); touch(); draw(); } }, 'Remove'))));
+      });
+      if (list.isConnected) growAll(list);
+    }
+    draw(); count();
+    var status = h('p', { class: 'status' }, 'Saves by itself');
+    show(backLink('p/' + p.id, p.name), h('p', { class: 'eyebrow' }, p.name), h('h1', { class: 'h1small' }, st.name),
+      h('p', { class: 'sub hintline' }, st.hint), countEl, list,
+      h('button', { class: 'btn', onclick: function () { p.anchors.push(blankAnchor()); touch(); draw(); } }, '+ Add an anchor'),
+      status,
+      h('div', { class: 'actions' }, h('a', { class: 'btn primary', href: '#p/' + p.id }, 'Back to the project')));
+    statusEl = status;
+  }
+
+  // Column Studio lives at another address, so it can't read this app's storage.
+  // The draft travels as a file in Column Studio's own backup format, which its Import merges in.
+  function handoff(p) {
+    var draft = stepOutput(p, 'draft');
+    if (!draft.trim()) return null;
+    if (p.pipeline !== 'column') {
+      return h('div', null, h('h2', null, 'The scene'), h('button', { class: 'btn', onclick: function () { copyText(draft); } }, 'Copy the draft'));
+    }
+    var ds = stepSession(p, 'draft');
+    return h('div', null, h('h2', null, 'Send to Column Studio'),
+      ds && !finished(ds) ? h('p', { class: 'hint' }, 'The draft step isn\'t finished yet. This sends what\'s there now.') : null,
+      h('button', { class: 'btn primary', onclick: function () { columnFile(p, draft); } }, 'Make a Column Studio import file'),
+      h('button', { class: 'btn', onclick: function () { copyText(draft); } }, 'Copy the draft'),
+      h('div', { class: 'note' },
+        h('p', null, 'Then open ', h('a', { href: COLUMN_STUDIO, target: '_blank', rel: 'noopener' }, 'Column Studio'),
+          '. At the bottom of its home page, under Backup, tap Import, choose the file and pick "Add to what is here". The draft arrives as a column called "' + p.name + '", marked Drafting.'),
+        h('p', { style: 'margin:0' }, 'Send it again after more work and Column Studio keeps whichever version was edited last. Nothing else there is touched.')));
+  }
+  function columnFile(p, draft) {
+    var col = { id: 'fw' + p.id, title: p.name, status: 'Drafting', created: p.created, updated: Date.now(), answers: {}, draft: draft.trim() };
+    var payload = JSON.stringify({ app: 'column-studio', version: 1, columns: [col], ideas: [], stuck: {}, firstUse: Date.now(), lastExport: 0, exported: Date.now() }, null, 1);
+    shareFile('column-studio-backup-from-freewriting-' + stamp() + '.json', payload, 'application/json', function () { toast('File made. Import it in Column Studio.'); });
   }
 
   function savedScreen() {
@@ -1171,7 +1395,9 @@
       function (s) { return 's/' + s.id; }, function (s) { return sessionName(s) + ' · ' + dateText(s.created); }));
     block('Morning Freewrite', hits(db.morning.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; }),
       function (m) { return [m.text, db.prompts[m.date]]; }, function (m) { return 'morning/' + m.date; }, function (m) { return dateText(keyDate(m.date)); }));
-    block('Techniques', hits(TECHS, function (t) { return [t.name, t.summary].concat(t.how || []); },
+    block('Projects', hits(db.projects, function (p) { return [p.name, anchorsText(p)]; },
+      function (p) { return 'p/' + p.id; }, function (p) { return p.name; }));
+    block('Techniques', hits(TECHS.filter(function (t) { return !t.hidden; }),function (t) { return [t.name, t.summary].concat(t.how || []); },
       function (t) { return 't/' + t.id; }, function (t) { return t.name; }));
     if (!total) results.appendChild(h('p', { class: 'empty' }, 'Nothing found for "' + text.trim() + '".'));
   }
@@ -1243,7 +1469,7 @@
     } else toast('Could not copy');
   }
 
-  var LISTS = ['sessions', 'morning'];
+  var LISTS = ['sessions', 'morning', 'projects'];
   function morningCount(d) { return d.morning.filter(function (m) { return (m.text || '').trim(); }).length; }
   function totalItems(d) { return d.sessions.filter(function (s) { return !isEmpty(s); }).length + morningCount(d); }
   function countsText(d) {
@@ -1329,6 +1555,8 @@
     if (a === 't') return techScreen(b);
     if (a === 's') return sessionScreen(b);
     if (a === 'morning') return morningScreen(b);
+    if (a === 'projects') return projectsScreen();
+    if (a === 'p') return parts[2] === 'anchors' ? anchorsScreen(b) : projectScreen(b);
     if (a === 'saved') return savedScreen();
     if (a === 'settings') return settingsScreen();
     if (a === 'backup') return backupScreen();

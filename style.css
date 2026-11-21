@@ -165,3 +165,66 @@ body.focus .bars { margin-top: 4px; }
   background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 22px; font-size: 15px; opacity: 0;
   transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; max-width: 90vw; text-align: center; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
+
+/* ---------- stage 2: phases, marking, Hot Seat, Gradual Sketch ---------- */
+
+#app.wide { max-width: 1060px; }
+.stepper { list-style: none; margin: 10px 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.stepper li { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 5px 6px; border-radius: 16px; border: 1px solid var(--line);
+  background: var(--card); font-size: 13px; color: var(--soft); }
+.stepper li b { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 10px;
+  background: var(--tint); font-size: 12px; }
+.stepper li .mins { font-variant-numeric: tabular-nums; opacity: 0.8; }
+.stepper li.past { text-decoration: line-through; text-decoration-color: var(--line); }
+.stepper li.past b { background: var(--green); color: var(--bg); }
+.stepper li.now { border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.stepper li.now b { background: var(--accent); color: var(--accent-ink); }
+.hintline { margin: 4px 0 0; }
+
+.pinned { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.pin { background: var(--tint); border-left: 3px solid var(--green); border-radius: 0 12px 12px 0; padding: 10px 14px; }
+.pinned .pintext { max-height: 32vh; overflow: auto; }
+.pintext { white-space: pre-wrap; overflow-wrap: anywhere; font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 17px; line-height: 1.55; margin-top: 4px; }
+.facedown { font-style: italic; margin: 4px 0 0; }
+.keep { margin: 6px 0 0; padding-left: 18px; font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 16px; }
+.keep li + li { margin-top: 6px; }
+.split .dash { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; }
+@media (min-width: 900px) {
+  .split { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 28px; align-items: start; }
+  .split .pinned { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+  .split .pinned .pintext { max-height: none; overflow: visible; }
+}
+.nextwrap { margin-top: 18px; }
+body.focus .nextwrap { display: block; }
+
+.earlier-phase { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin-top: 8px; }
+.earlier-phase summary { cursor: pointer; font-weight: 600; }
+.earlier-phase .pintext { margin-top: 10px; }
+textarea.writing.final { min-height: 40vh; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+
+.markcount { color: var(--soft); font-size: 14px; margin: 12px 0 4px; }
+.chunks { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.chunk { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; transition: opacity .15s; }
+.chunk p { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 17px; line-height: 1.55; margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.markbtns { display: flex; gap: 8px; }
+.mark { flex: 1; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 8px; font-size: 14px; font-weight: 600; color: var(--soft); }
+.chunk.is-strong { border-color: var(--green); box-shadow: inset 4px 0 0 var(--green); }
+.chunk.is-strong .mark:first-child { background: var(--green); border-color: var(--green); color: var(--bg); }
+.chunk.is-dead { opacity: 0.55; }
+.chunk.is-dead p { text-decoration: line-through; text-decoration-color: var(--soft); }
+.chunk.is-dead .mark:last-child { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+.setrow { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; }
+.setrow .grow { flex: 1; min-width: 0; }
+.setnum { flex: none; width: 22px; padding-top: 13px; color: var(--soft); font-variant-numeric: tabular-nums; text-align: right; }
+.setbtns { display: flex; gap: 4px; padding-top: 5px; }
+.qlist + .btn { margin-top: 14px; }
+.hsq { font-family: "Iowan Old Style", Palatino, Georgia, serif; font-size: 24px; line-height: 1.3; margin: 6px 0 4px; overflow-wrap: anywhere; }
+.hsq.small { font-size: 19px; margin: 0 0 4px; }
+textarea.writing.hs { min-height: 34vh; }
+.qa { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
+
+.pass { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px 12px; margin-top: 12px; }
+.pass .seed-label, .passlabel { margin: 0; }
+.passlabel { margin-top: 22px; }
+mark.gap { background: var(--tint); color: var(--accent); border-radius: 4px; padding: 0 3px; font-weight: 600; }

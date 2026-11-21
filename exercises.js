@@ -61,7 +61,10 @@ window.FS_TECHNIQUES = [
     id: 'outline', module: 2, n: 5, name: 'Outline Sketch',
     summary: 'A fast freewrite of the main beats in order, then a longer one filling each beat in.',
     how: ['Sketch: list the beats in order, fast, as phrases. No scene-setting, no polish.', 'Fill in: freewrite the piece beat by beat with the sketch open beside you.'],
-    later: 'A two-part screen, with the sketch pinned beside the fill-in, comes in stage 2. For now, run the sketch here, then start a second session for the fill-in.',
+    phases: [
+      { name: 'Sketch', minutes: 5, kind: 'write', hint: 'List the beats in order, fast. Phrases, not sentences.' },
+      { name: 'Fill in', minutes: 15, kind: 'write', pin: 0, hint: 'Write the piece beat by beat. The sketch stays in view.' }
+    ],
     seedLabel: 'What you\'re sketching',
     goal: { mode: 'time', minutes: 5, words: 200, endOn: 'first' },
     timing: { book: false, text: 'The book says "quick" for the sketch. 5 minutes, suggested; 15 to 20 for the fill-in' }
@@ -70,7 +73,10 @@ window.FS_TECHNIQUES = [
     id: 'washaway', module: 2, n: 6, name: 'Wash-Away Sketch',
     summary: 'Sketch quickly, note its shape, set it aside, then write the piece without looking back.',
     how: ['Sketch the beats quickly.', 'Notice the shape, then put the sketch away.', 'Freewrite the piece from memory of that shape alone.'],
-    later: 'In stage 2 the app hides the sketch for you while you write.',
+    phases: [
+      { name: 'Sketch', minutes: 5, kind: 'write', hint: 'Sketch the beats quickly. Notice the shape.' },
+      { name: 'Write it', minutes: 15, kind: 'write', pin: 0, hidePin: true, hint: 'The sketch is face-down. Write from your memory of its shape. It turns over once you reach the goal.' }
+    ],
     seedLabel: 'What you\'re sketching',
     goal: { mode: 'time', minutes: 5, words: 200, endOn: 'first' },
     timing: { book: false, text: '5 minutes for the sketch, suggested' }
@@ -79,7 +85,6 @@ window.FS_TECHNIQUES = [
     id: 'gradual', module: 2, n: 7, name: 'Gradual Sketch',
     summary: 'Build the sketch in short passes over time, adding detail each round, leaving gaps open.',
     how: ['Write a short pass: what you know so far. Mark what you don\'t know as [gaps].', 'Come back later, hours or days, and add another pass.', 'Stop when there\'s enough to write from.'],
-    later: 'In stage 2 the passes are kept together in one running sketch, each one dated.',
     seedLabel: 'What you\'re sketching',
     goal: { mode: 'time', minutes: 5, words: 150, endOn: 'first' },
     timing: { book: false, text: '5 minutes a pass, suggested' }
@@ -90,8 +95,18 @@ window.FS_TECHNIQUES = [
     id: 'hotseat', module: 3, n: 8, name: 'Hot Seat Mode',
     summary: 'Prepare pointed questions in advance, then answer each one fast against a minute\'s timer.',
     how: ['Write your questions first, before any timer.', 'Then take one question at a time and answer it in one minute, no editing.', 'Move straight on to the next.'],
-    later: 'In stage 2, Hot Seat gets its own screen: list the questions once, and each gets a minute and moves on by itself. For now, run one minute per question here.',
-    seedLabel: 'The question',
+    sets: [
+      { name: 'Column: test the take', questions: [
+        'What\'s the strongest case against my take?',
+        'What\'s the best real counter-example?',
+        'Am I being cynical, or accurate?',
+        'Is this pattern specific to this topic, or does it fit almost anything? If it fits anything, what makes this one worth writing?',
+        'What\'s the most ordinary, banal outcome of this so far?',
+        'What\'s the one line a reader should walk away with?',
+        'What haven\'t I said yet that\'s vital to the argument?'
+      ] }
+    ],
+    seedLabel: 'Topic (optional)',
     goal: { mode: 'time', minutes: 1, words: 100, endOn: 'first' },
     timing: { book: true, text: '1 minute a question (book)' }
   },
@@ -226,8 +241,13 @@ window.FS_TECHNIQUES = [
   {
     id: 'onehour', module: 7, n: 23, name: 'The One-Hour Article/Essay', kind: 'recipe',
     summary: 'Sketch, freewrite, reread and mark, fill gaps and reorder, polish.',
-    phases: [['Sketch', 5], ['Freewrite', 25], ['Reread and mark', 5], ['Fill gaps and reorder', 20], ['Polish', 5]],
-    later: 'The phase-by-phase recipe timer comes in stage 2. For now, Start runs the 25-minute freewrite phase.',
+    phases: [
+      { name: 'Sketch', minutes: 5, kind: 'write', hint: 'List the beats of the piece in order, fast.' },
+      { name: 'Freewrite', minutes: 25, kind: 'write', pin: 0, hint: 'Write the whole piece without stopping. The sketch stays in view.' },
+      { name: 'Reread and mark', minutes: 5, kind: 'mark', markFrom: [1], hint: 'Don\'t edit yet. Mark what\'s strong and what\'s dead weight.' },
+      { name: 'Fill gaps and reorder', minutes: 20, kind: 'edit', from: 1, dropDead: 2, keep: 2, hint: 'Now edit. The dead weight is already cut; your strong passages are listed beside you. Move things, fill gaps, add facts.' },
+      { name: 'Polish', minutes: 5, kind: 'edit', from: 3, hint: 'Line level only. Make the opening earn the piece and the close land. Not the moment to restructure.' }
+    ],
     seedLabel: 'Your piece',
     goal: { mode: 'time', minutes: 25, words: 1000, endOn: 'first' },
     timing: { book: true, text: '5 / 25 / 5 / 20 / 5 minutes (book)' }
@@ -235,8 +255,13 @@ window.FS_TECHNIQUES = [
   {
     id: 'alternate', module: 7, n: 24, name: 'Alternate One-Hour Recipe', kind: 'recipe',
     summary: 'Sketch, freewrite, throw that draft away, sketch again, rewrite clean, then a longer polish.',
-    phases: [['Sketch', 5], ['Freewrite', 20], ['Discard and sketch again', 5], ['Rewrite clean', 20], ['Polish', 10]],
-    later: 'The phase-by-phase recipe timer comes in stage 2. For now, Start runs the 20-minute freewrite phase.',
+    phases: [
+      { name: 'Sketch', minutes: 5, kind: 'write', hint: 'List the beats of the piece in order, fast.' },
+      { name: 'Freewrite', minutes: 20, kind: 'write', pin: 0, hint: 'Write the piece. Expect to throw this draft away; it\'s for finding out what you think.' },
+      { name: 'Discard and sketch again', minutes: 5, kind: 'write', discards: 1, hint: 'The first draft is set aside. Sketch again from what you learned writing it.' },
+      { name: 'Rewrite clean', minutes: 20, kind: 'write', pin: 2, hint: 'Write the piece again from the new sketch.' },
+      { name: 'Polish', minutes: 10, kind: 'edit', from: 3, hint: 'A longer polish. Line level: opening, close, flab.' }
+    ],
     seedLabel: 'Your piece',
     goal: { mode: 'time', minutes: 20, words: 800, endOn: 'first' },
     timing: { book: true, text: '5 / 20 / 5 / 20 / 10 minutes (book)' }
@@ -244,8 +269,13 @@ window.FS_TECHNIQUES = [
   {
     id: 'clarify', module: 7, n: 25, name: '30-Minute Idea Clarification', kind: 'recipe',
     summary: 'Write freely, debate yourself, mark what matters, then write toward a summary. Keep only the summary.',
-    phases: [['Write freely', 5], ['Debate yourself', 10], ['Reread and mark', 5], ['Write toward a summary', 10]],
-    later: 'The phase-by-phase recipe timer comes in stage 2. For now, Start runs the first 5-minute phase.',
+    phases: [
+      { name: 'Write freely', minutes: 5, kind: 'write', hint: 'Write about the idea, any way in.' },
+      { name: 'Debate yourself', minutes: 10, kind: 'write', pin: 0, hint: 'Argue with what you just wrote. Take the other side, then answer it.' },
+      { name: 'Reread and mark', minutes: 5, kind: 'mark', markFrom: [0, 1], hint: 'Mark the passages that matter.' },
+      { name: 'Write toward a summary', minutes: 10, kind: 'write', keep: 2, hint: 'Write toward a short summary of the idea. What you marked is beside you.' }
+    ],
+    result: 'Your summary. The freewriting behind it is set aside below.',
     seedLabel: 'The idea',
     goal: { mode: 'time', minutes: 5, words: 250, endOn: 'first' },
     timing: { book: true, text: '5 / 10 / 5 / 10 minutes (book)' }

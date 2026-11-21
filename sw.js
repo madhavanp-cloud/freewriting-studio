@@ -1,6 +1,6 @@
 // Freewriting Studio: lets the app open without a connection.
 // It always tries the internet first, so a new version shows up as soon as it is published.
-var CACHE = 'freewriting-studio-v1';
+var CACHE = 'freewriting-studio-v2';
 var FILES = ['./', 'index.html', 'style.css', 'app.js', 'exercises.js', 'manifest.json', 'icon-180.png', 'icon-512.png'];
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }).then(function () { return self.skipWaiting(); }));

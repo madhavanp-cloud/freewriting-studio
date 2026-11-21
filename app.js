@@ -17,7 +17,7 @@
       morning: [],    // one per day: { id, date, text, goal, secondsTaken, reached }
       prompts: {},    // "2026-11-22": prompt written the day before
       projects: [],   // { id, name, pipeline, steps: { stepKey: sessionId }, anchors: [] }
-      settings: { agreement: true, chime: true, lastGoal: {} },
+      settings: { agreement: true, chime: true, stall: 8, lastGoal: {} },
       meta: { firstUse: Date.now(), lastExport: null, snooze: 0, tipDismissed: false }
     };
   }
@@ -193,6 +193,37 @@
     } else if (wake) { wake.release().catch(function () {}); wake = null; }
   }
 
+  /* ---------- when you stall: Bag of Tricks and Navigate by Association ---------- */
+
+  var STUCK = [
+    ['Free-associate.', 'Take your last word. Write the word it brings to mind, then the next, until a direction opens. Then follow it in full sentences.'],
+    ['Return to the seed.', 'Come back to where you started, and say it a different way.'],
+    ['Make a metaphor.', 'What is this like? Write the comparison and follow where it goes.'],
+    ['Change register.', 'Say the last thing again more formally, more casually or more bluntly.'],
+    ['Get altitude.', 'Step back and write about the shape of the thing: what it\'s for, where it\'s heading.'],
+    ['Repeat or recap.', 'Write out what you just said in other words. It often moves on by itself.'],
+    ['Share a block.', 'Afterwards, not now: show someone a stretch of it and listen to what they notice.']
+  ];
+  function lastWord(text) {
+    var m = (text || '').match(/([\p{L}\p{N}'’-]+)[^\p{L}\p{N}]*$/u);
+    return m ? m[1] : '';
+  }
+  function nudgeText(text, seed, k) {
+    var options = [], w = lastWord(text);
+    if (w) options.push('Stalled? Free-associate from your last word, “' + w + '”: write the next word it brings, then the next.');
+    if ((seed || '').trim()) options.push('Stalled? Come back to the seed, “' + firstLine(seed, 80) + '”, and say it another way.');
+    STUCK.slice(2, 6).forEach(function (m) { options.push('Stalled? ' + m[0] + ' ' + m[1]); });
+    return options[k % options.length];
+  }
+  function stuckBody(text, seed, restates) {
+    var w = lastWord(text), now = restates && restates.length ? restates[restates.length - 1].text : seed;
+    return h('div', null,
+      h('p', { class: 'sub' }, 'The timer keeps running. Pick one and go straight back in.'),
+      w ? h('div', { class: 'seed' }, h('span', { class: 'seed-label' }, 'Your last word'), h('p', null, w)) : null,
+      (now || '').trim() ? h('div', { class: 'seed' }, h('span', { class: 'seed-label' }, 'Your seed'), h('p', null, now)) : null,
+      h('ol', { class: 'rules stucklist' }, STUCK.map(function (m) { return h('li', null, h('b', null, m[0]), ' ', m[1]); })));
+  }
+
   /* ---------- the writing screen ---------- */
 
   var stopWriter = null;   // whatever screen has a timer running sets this, and leaving the screen calls it
@@ -314,13 +345,19 @@
     var goBtn = h('button', { class: 'btn primary go' });
     var focusBtn = h('button', { class: 'link focusbtn', onclick: function () { setFocus(!document.body.classList.contains('focus')); } });
     var lockNote = h('p', { class: 'locknote' });
+    var pace = h('span', { class: 'pace' });
+    var nudge = h('p', { class: 'nudge', hidden: 'hidden', role: 'status' });
+    var stuckBtn = h('button', { class: 'link', onclick: function () {
+      modal('Stuck?', stuckBody(rec.text, sr.seed, sr.restates), [{ label: 'Back to writing', primary: true, run: function () { box.focus(); } }]);
+    } }, 'Stuck?');
     var dash = h('div', { class: 'dash' },
       h('div', { class: 'readouts' },
         h('div', { class: 'readout' }, clock, clockLabel),
         h('div', { class: 'readout' }, wordsEl, wordsLabel)),
       bars,
-      opts.readOnly ? null : h('div', { class: 'dashbtns' }, goBtn, focusBtn),
-      lockNote);
+      opts.readOnly ? null : h('div', { class: 'dashbtns' }, goBtn, opts.noLock ? null : stuckBtn, focusBtn),
+      h('div', { class: 'dashmeta' }, lockNote, pace),
+      nudge);
 
     function setFocus(on) {
       document.body.classList.toggle('focus', on);
@@ -353,6 +390,18 @@
         : locked() ? 'No deleting until the goal is reached.' : '';
       dash.classList.toggle('running', running);
       dash.classList.toggle('done', !!rec.reached);
+      // Webber's yardstick is 1,000 to 2,000 words an hour; show the pace once there's a minute to judge by.
+      pace.textContent = s >= 60 && n ? Math.round(n / s * 3600).toLocaleString('en-IN') + ' words an hour' : '';
+    }
+
+    // After a pause in typing, offer one way back in: the last word, the seed, or a Bag of Tricks move.
+    var lastInput = Date.now(), nudgeCount = 0;
+    function checkStall(now) {
+      var secs = db.settings.stall;
+      if (!secs || !running || rec.reached || opts.noLock || opts.readOnly || !nudge.hidden) return;
+      if (now - lastInput < secs * 1000) return;
+      nudge.textContent = nudgeText(rec.text, sr.restates.length ? sr.restates[sr.restates.length - 1].text : sr.seed, nudgeCount++);
+      nudge.hidden = false;
     }
 
     function tick() {
@@ -361,6 +410,7 @@
       lastTick = now;
       check();
       drawDash();
+      checkStall(now);
       if (now - lastSaved > 5000) { lastSaved = now; opts.touch(); }
     }
     function check() {
@@ -381,7 +431,7 @@
         picker.hidden = true; drawSeed();
         if (opts.onStart) opts.onStart();
       }
-      running = true; lastTick = Date.now();
+      running = true; lastTick = Date.now(); lastInput = Date.now();
       interval = setInterval(tick, 250);
       keepAwake(true);
       drawDash(); opts.touch();
@@ -403,6 +453,7 @@
     if (opts.readOnly) box.readOnly = true;
     if (!opts.readOnly) guard(box, locked, function () { if (!running) start(); });
     box.addEventListener('input', function () {
+      lastInput = Date.now(); nudge.hidden = true;
       rec.text = box.value; grow(box);
       check(); drawDash(); opts.touch();
     });
@@ -558,6 +609,8 @@
       })),
       h('h2', null, 'More'),
       h('ul', { class: 'list' },
+        rowLink('stuck', 'Stuck?', 'Seven ways back in when you stall'),
+        rowLink('stats', 'Your writing', statsLine()),
         rowLink('settings', 'Settings', db.settings.agreement ? 'No deleting during a freewrite: on' : 'No deleting during a freewrite: off'),
         rowLink('backup', 'Export and Import', db.meta.lastExport ? 'Last export ' + dateText(db.meta.lastExport) : 'Not exported yet')));
     show(h('p', { class: 'eyebrow' }, 'Notes on freewriting'), h('h1', null, 'Freewriting Studio'),
@@ -598,8 +651,8 @@
       h('h1', null, t.name),
       h('p', { class: 'sub' }, t.summary),
       h('p', { class: 'timing' }, h('span', { class: 'tag' + (t.timing.book ? ' book' : '') }, t.timing.book ? 'Book' : 'Suggested'), ' ', t.timing.text),
-      h('h2', null, t.kind === 'reference' ? 'The moves' : 'How it works'),
-      h('ol', { class: 'rules' }, t.how ? t.how.map(function (x) { return h('li', null, x); }) : null),
+      t.how ? [h('h2', null, t.kind === 'reference' ? 'The moves' : 'How it works'),
+        h('ol', { class: 'rules' }, t.how.map(function (x) { return h('li', null, x); }))] : null,
       t.phases ? [h('h2', null, 'Phases'), h('ol', { class: 'rules' }, t.phases.map(function (p) {
         return h('li', null, h('b', null, p.name), ' — ' + plural(p.minutes, 'minute') + (p.kind === 'write' ? '' : p.kind === 'mark' ? ', no typing' : ', editing allowed'));
       }))] : null,
@@ -1243,6 +1296,102 @@
     shareFile('column-studio-backup-from-freewriting-' + stamp() + '.json', payload, 'application/json', function () { toast('File made. Import it in Column Studio.'); });
   }
 
+  /* ---------- Stuck and Stats ---------- */
+
+  function stuckScreen() {
+    show(backLink('', 'Home'), h('h1', null, 'Stuck?'),
+      h('p', { class: 'sub' }, 'Ways back in when the pen stops, from Webber\'s Bag of Tricks and Navigate by Association. While you write, the Stuck? link under the timer opens the same list without stopping the clock.'),
+      h('ol', { class: 'rules stucklist' }, STUCK.map(function (m) { return h('li', null, h('b', null, m[0]), ' ', m[1]); })),
+      h('div', { class: 'actions' }, h('a', { class: 'btn', href: '#t/tricks' }, 'Bag of Tricks in the technique list')));
+  }
+
+  // Count only freewritten words: editing and polishing phases rework words already counted.
+  function writtenWords(s) {
+    if (s.phases) return s.phases.reduce(function (a, p) { return a + (p.kind === 'write' ? countWords(p.text) : 0); }, 0);
+    if (s.questions) return s.questions.reduce(function (a, q) { return a + countWords(q.a); }, 0);
+    if (s.passes) return s.passes.reduce(function (a, p) { return a + countWords(p.text); }, 0);
+    return countWords(s.text);
+  }
+  function writtenSeconds(s) {
+    if (s.phases) return s.phases.reduce(function (a, p) { return a + (p.kind === 'write' ? p.secondsTaken || 0 : 0); }, 0);
+    return totalSeconds(s);
+  }
+  function sittings() {
+    var out = [];
+    db.sessions.forEach(function (s) {
+      if (isEmpty(s)) return;
+      out.push({ day: dayKey(new Date(s.created)), words: writtenWords(s), secs: writtenSeconds(s), tech: s.technique });
+    });
+    db.morning.forEach(function (m) {
+      if (!(m.text || '').trim()) return;
+      out.push({ day: m.date, words: countWords(m.text), secs: m.secondsTaken || 0, tech: 'morning' });
+    });
+    return out;
+  }
+  function bestStreak() {
+    var daysDone = db.morning.filter(function (m) { return (m.text || '').trim(); }).map(function (m) { return m.date; }).sort();
+    var best = 0, run = 0, prev = null;
+    daysDone.forEach(function (k) {
+      var d = keyDate(k);
+      if (prev) { var p = new Date(prev); p.setDate(p.getDate() + 1); run = dayKey(p) === k ? run + 1 : 1; } else run = 1;
+      prev = d; if (run > best) best = run;
+    });
+    return best;
+  }
+  function statsLine() {
+    var all = sittings();
+    if (!all.length) return 'Nothing written yet';
+    return all.reduce(function (a, x) { return a + x.words; }, 0).toLocaleString('en-IN') + ' words in ' + plural(all.length, 'sitting');
+  }
+  function statsScreen() {
+    var all = sittings();
+    if (!all.length) {
+      return show(backLink('', 'Home'), h('h1', null, 'Your writing'), h('p', { class: 'sub' }, 'Nothing written yet. Your totals, pace and streaks show up here once you start.'));
+    }
+    var words = 0, secs = 0, timedWords = 0;
+    all.forEach(function (x) { words += x.words; secs += x.secs; if (x.secs >= 60) timedWords += x.words; });
+    var timedSecs = all.reduce(function (a, x) { return a + (x.secs >= 60 ? x.secs : 0); }, 0);
+    var pace = timedSecs ? Math.round(timedWords / timedSecs * 3600) : 0;
+    function tile(big, label) { return h('div', { class: 'tile' }, h('span', { class: 'big' }, big), h('span', { class: 'lbl' }, label)); }
+    // the last fourteen days
+    var byDay = {};
+    all.forEach(function (x) { byDay[x.day] = (byDay[x.day] || 0) + x.words; });
+    var daysList = [];
+    for (var i = 13; i >= 0; i--) { var d = new Date(); d.setDate(d.getDate() - i); daysList.push(dayKey(d)); }
+    var max = Math.max.apply(null, daysList.map(function (k) { return byDay[k] || 0; }).concat([1]));
+    var chart = h('div', { class: 'daybars', role: 'img', 'aria-label': 'Words written each day for the last fourteen days' }, daysList.map(function (k) {
+      var n = byDay[k] || 0, d = keyDate(k);
+      return h('div', { class: 'daybar', title: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + ': ' + plural(n, 'word') },
+        h('span', { class: 'n' }, n ? (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n) : ''),
+        h('i', { style: 'height:' + Math.round(n / max * 100) + '%' }),
+        h('span', { class: 'dd' }, d.getDate()));
+    }));
+    // techniques used most
+    var counts = {};
+    all.forEach(function (x) { counts[x.tech] = (counts[x.tech] || 0) + 1; });
+    var top = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).slice(0, 5);
+    show(backLink('', 'Home'), h('h1', null, 'Your writing'),
+      h('p', { class: 'sub' }, 'Everything on this device, Morning Freewrites included. Time counts only while a timer runs.'),
+      h('div', { class: 'tiles' },
+        tile(words.toLocaleString('en-IN'), 'words freewritten'),
+        tile(minsText(secs).replace(' minutes', ' min').replace(' minute', ' min'), 'writing time'),
+        tile(String(all.length), all.length === 1 ? 'sitting' : 'sittings'),
+        tile(pace ? pace.toLocaleString('en-IN') : '—', 'words an hour')),
+      h('p', { class: 'hint' }, pace ? (pace < 1000 ? 'Below Webber\'s yardstick of 1,000 to 2,000 words an hour. Fine for thinking-heavy work like Hot Seat; for plain freewriting, try not stopping.'
+        : pace <= 2000 ? 'Inside Webber\'s yardstick of 1,000 to 2,000 words an hour.' : 'Above Webber\'s yardstick of 1,000 to 2,000 words an hour.') : 'Pace shows once you have a timed sitting of a minute or more.'),
+      h('h2', null, 'Last 14 days'), chart,
+      h('h2', null, 'Morning Freewrite'),
+      h('div', { class: 'tiles' },
+        tile(String(chain()), 'day streak now'),
+        tile(String(bestStreak()), 'best streak'),
+        tile(String(morningCount(db)), morningCount(db) === 1 ? 'morning written' : 'mornings written')),
+      h('h2', null, 'Most used'),
+      h('ul', { class: 'list' }, top.map(function (id) {
+        var name = id === 'morning' ? 'Morning Freewrite' : (TECH[id] || TECH.free).name;
+        return h('li', null, h('div', { class: 'row' }, h('span', { class: 'grow' }, h('span', { class: 't' }, name)), h('span', { class: 'n' }, counts[id])));
+      })));
+  }
+
   function savedScreen() {
     var list = sorted(db.sessions.filter(function (s) { return !isEmpty(s); }));
     show(backLink('', 'Home'), h('h1', null, 'Saved freewrites'),
@@ -1358,6 +1507,13 @@
         toggle('agreement', 'No deleting during a freewrite',
           'Backspace, Delete, Cut and Undo do nothing until the goal is reached, as in the Freewriting Agreement. Editing opens again once you reach it.'),
         toggle('chime', 'Chime when the goal is reached', 'A soft two-note sound. On iPhone the ring/silent switch can mute it.')),
+      h('h2', null, 'When you stall'),
+      h('p', { class: 'hint' }, 'If you stop typing mid-freewrite, a line appears under the timer with one way back in: your last word to free-associate from, your seed, or a Bag of Tricks move.'),
+      h('div', { class: 'ticks' }, [[0, 'Never'], [8, 'After 8 seconds'], [15, 'After 15 seconds'], [30, 'After 30 seconds']].map(function (o) {
+        var r = h('input', { type: 'radio', name: 'stall', checked: db.settings.stall === o[0] });
+        r.addEventListener('change', function () { db.settings.stall = o[0]; persist(); toast('Saved'); });
+        return h('label', { class: 'tick' }, r, h('span', null, o[1]));
+      })),
       h('h2', null, 'Goals'),
       h('p', null, 'Each technique remembers the goal you last used with it. You can change it on the writing screen before you start.'));
   }
@@ -1555,6 +1711,8 @@
     if (a === 't') return techScreen(b);
     if (a === 's') return sessionScreen(b);
     if (a === 'morning') return morningScreen(b);
+    if (a === 'stuck') return stuckScreen();
+    if (a === 'stats') return statsScreen();
     if (a === 'projects') return projectsScreen();
     if (a === 'p') return parts[2] === 'anchors' ? anchorsScreen(b) : projectScreen(b);
     if (a === 'saved') return savedScreen();
